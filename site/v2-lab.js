@@ -27,7 +27,7 @@
   if(remote){
    const rows=await apiFetch('/api/v2/research-artifacts?type='+encodeURIComponent(type));
    const mapped=rows.map(r=>({id:r.id,at:r.created_at,updated_at:r.updated_at,created_by:r.created_by,...r.payload}));
-   write(keys[mapType(type)],mapped);return mapped;
+   return mapped;
   }
   return read(keys[mapType(type)]);
  }
