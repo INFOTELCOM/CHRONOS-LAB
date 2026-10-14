@@ -554,7 +554,7 @@ def add_security_and_cors_headers(response):
     if origin.rstrip('/') in allowed:
         response.headers['Access-Control-Allow-Origin'] = origin
         response.headers['Vary'] = 'Origin'
-        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, DELETE, OPTIONS'
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
         response.headers['Access-Control-Max-Age'] = '600'
     response.headers.setdefault('X-Content-Type-Options', 'nosniff')
@@ -798,7 +798,15 @@ def _auth_user_from_request():
 
 @app.before_request
 def enforce_api_authentication():
-    if not request.path.startswith('/api/') or request.method == 'OPTIONS':
+    if request.method == 'OPTIONS':
+        return None
+    if request.path.startswith('/uploads/'):
+        user = _auth_user_from_request()
+        if not user:
+            return jsonify({'error':'Authentification requise ou session expirée.', 'code':'AUTH_REQUIRED'}), 401
+        g.current_user = user
+        return None
+    if not request.path.startswith('/api/'):
         return None
     if request.endpoint == 'auth_login':
         return None
