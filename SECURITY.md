@@ -32,3 +32,23 @@ GitHub Pages ne peut héberger que les ressources statiques du dossier `site/`. 
 ## Validité scientifique
 
 Les scores enregistrés dans les fiches de validation sont des valeurs déclarées par l'utilisateur ; la V2 ne les recalcule pas à partir des prédictions. Pour une évaluation vérifiable, conserver le jeu de test, les étiquettes de référence, la version du code et du modèle, le protocole, les prédictions brutes et le rapport de calcul. Une métrique ou une sortie IA n'est pas une certification de lecture épigraphique.
+
+
+## Authentification et stockage V2
+
+- Les routes privées de l'API et les fichiers téléversés exigent un jeton Bearer opaque, aléatoire et expirant après huit heures.
+- Le serveur ne stocke que l'empreinte SHA-256 du jeton ; les mots de passe sont hachés avec Werkzeug.
+- La création des comptes est réservée à l'administrateur ; aucune inscription publique ni mot de passe administrateur par défaut.
+- Les rôles sont vérifiés côté serveur : admin, researcher, evaluator.
+- Les expériences, évaluations et événements d'audit sont stockés côté serveur et associés à l'espace CHRONOS LAB.
+- Le jeton du navigateur est conservé dans sessionStorage, pas dans le code public ni dans le dépôt.
+- Configure `CHRONOS_BOOTSTRAP_ADMIN_EMAIL`, `CHRONOS_BOOTSTRAP_ADMIN_PASSWORD`, `CHRONOS_ALLOWED_ORIGINS` et un volume persistant `CHRONOS_DATA_DIR` chez l'hébergeur.
+
+### Points de déploiement à vérifier
+
+1. HTTPS obligatoire en production ; ne publie pas l'API en HTTP sur Internet.
+2. Le stockage SQLite doit être persistant et sauvegardé. Une seule instance applicative est recommandée pour le déploiement SQLite initial.
+3. CORS doit contenir uniquement les origines contrôlées ; CORS n'est pas un mécanisme d'authentification.
+4. Les jetons expirent en huit heures ; les sessions expirées doivent se reconnecter.
+5. Le bootstrap ne réinitialise pas le mot de passe si l'administrateur existe déjà. Utilise une procédure de changement de mot de passe contrôlée avant production.
+6. Cette V2 est conçue pour une équipe dans un espace partagé, pas encore pour plusieurs organisations indépendantes. Les données historiques de l'API sont partagées au sein de cet espace.

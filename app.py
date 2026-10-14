@@ -1,5 +1,7 @@
 from __future__ import annotations
-import os, sqlite3, json, math, hashlib
+import os, sqlite3, json, math, hashlib, secrets, re
+from functools import wraps
+from datetime import timezone
 from datetime import datetime, timedelta, date
 from pathlib import Path
 from urllib.parse import urlencode
@@ -9,7 +11,8 @@ import subprocess
 import numpy as np
 import cv2
 from PIL import Image, ImageOps
-from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask import Flask, render_template, request, jsonify, send_from_directory, g
+from werkzeug.security import generate_password_hash, check_password_hash
 
 BASE = Path(__file__).resolve().parent
 # Set CHRONOS_DATA_DIR to a persistent mounted directory in production (e.g. /var/data).
@@ -73,6 +76,44 @@ def connect():
     c.execute('''CREATE TABLE IF NOT EXISTS signs(id INTEGER PRIMARY KEY, culture TEXT NOT NULL, sign_code TEXT DEFAULT '', label TEXT NOT NULL, reading TEXT DEFAULT '', meaning TEXT DEFAULT '', source TEXT DEFAULT '', image_file TEXT DEFAULT '', created_at TEXT DEFAULT CURRENT_TIMESTAMP)''')
     c.execute('''CREATE TABLE IF NOT EXISTS epigraphic_claims(id INTEGER PRIMARY KEY, culture TEXT NOT NULL, artifact_id TEXT DEFAULT '', claim_type TEXT NOT NULL, claim_text TEXT NOT NULL, context TEXT DEFAULT '', sources_json TEXT NOT NULL DEFAULT '[]', created_by TEXT DEFAULT '', status TEXT NOT NULL DEFAULT 'NEEDS_REVIEW', created_at TEXT DEFAULT CURRENT_TIMESTAMP)''')
     c.execute('''CREATE TABLE IF NOT EXISTS epigraphic_reviews(id INTEGER PRIMARY KEY, claim_id INTEGER NOT NULL, reviewer_name TEXT NOT NULL, affiliation TEXT DEFAULT '', credential_id TEXT DEFAULT '', decision TEXT NOT NULL, rationale TEXT NOT NULL, references_checked TEXT DEFAULT '', created_at TEXT DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(claim_id) REFERENCES epigraphic_claims(id))''')
+    c.execute("""CREATE TABLE IF NOT EXISTS workspaces (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)""")
+    c.execute("INSERT OR IGNORE INTO workspaces(id,name) VALUES(1,'CHRONOS LAB')")
+    c.execute("""CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL UNIQUE,
+        display_name TEXT NOT NULL, password_hash TEXT NOT NULL,
+        role TEXT NOT NULL CHECK(role IN ('admin','researcher','evaluator')),
+        workspace_id INTEGER NOT NULL DEFAULT 1, is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(workspace_id) REFERENCES workspaces(id))""")
+    c.execute("""CREATE TABLE IF NOT EXISTS api_tokens (
+        token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL, expires_at TEXT NOT NULL,
+        revoked_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)""")
+    c.execute("""CREATE TABLE IF NOT EXISTS auth_login_attempts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, ip_hash TEXT NOT NULL,
+        email TEXT NOT NULL, success INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)""")
+    c.execute("""CREATE TABLE IF NOT EXISTS experiments (
+        id TEXT PRIMARY KEY, workspace_id INTEGER NOT NULL, created_by INTEGER NOT NULL,
+        name TEXT NOT NULL, model TEXT NOT NULL, version TEXT DEFAULT '',
+        dataset TEXT NOT NULL, parameters TEXT DEFAULT '', notes TEXT DEFAULT '',
+        created_at TEXT NOT NULL, FOREIGN KEY(workspace_id) REFERENCES workspaces(id),
+        FOREIGN KEY(created_by) REFERENCES users(id))""")
+    c.execute("""CREATE TABLE IF NOT EXISTS validations (
+        id TEXT PRIMARY KEY, workspace_id INTEGER NOT NULL, created_by INTEGER NOT NULL,
+        model TEXT NOT NULL, dataset TEXT NOT NULL, precision REAL NOT NULL,
+        recall REAL NOT NULL, f1 REAL NOT NULL, samples INTEGER NOT NULL,
+        protocol TEXT NOT NULL, created_at TEXT NOT NULL,
+        FOREIGN KEY(workspace_id) REFERENCES workspaces(id),
+        FOREIGN KEY(created_by) REFERENCES users(id))""")
+    c.execute("""CREATE TABLE IF NOT EXISTS audit_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, workspace_id INTEGER NOT NULL,
+        user_id INTEGER, action TEXT NOT NULL, resource TEXT NOT NULL,
+        resource_id TEXT DEFAULT '', details_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(workspace_id) REFERENCES workspaces(id))""")
     c.commit(); return c
 connect().close()
 
@@ -513,7 +554,7 @@ def add_security_and_cors_headers(response):
     if origin.rstrip('/') in allowed:
         response.headers['Access-Control-Allow-Origin'] = origin
         response.headers['Vary'] = 'Origin'
-        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, DELETE, OPTIONS'
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
         response.headers['Access-Control-Max-Age'] = '600'
     response.headers.setdefault('X-Content-Type-Options', 'nosniff')
@@ -708,6 +749,295 @@ def export_db():
     c=connect(); data={'signs':[dict(r) for r in c.execute('SELECT * FROM signs')],'inscriptions':[dict(r) for r in c.execute('SELECT * FROM inscriptions')],'epigraphic_claims':[dict(r) for r in c.execute('SELECT * FROM epigraphic_claims')],'epigraphic_reviews':[dict(r) for r in c.execute('SELECT * FROM epigraphic_reviews')]}; c.close()
     from flask import Response
     return Response(json.dumps(data,ensure_ascii=False,indent=2),mimetype='application/json',headers={'Content-Disposition':'attachment; filename=chronos-database-export.json'})
+
+
+# Authentication for the research API.
+# The static Pages client uses short-lived bearer tokens; no passwords or tokens are stored in Git.
+TOKEN_LIFETIME_HOURS = 8
+PUBLIC_API_ENDPOINTS = {
+    'health', 'scientific_policy', 'scripts', 'model_status', 'ocr_status',
+    'corpus_stats', 'calendar', 'astronomy', 'pattern_analysis'
+}
+
+def _utc_now():
+    return datetime.now(timezone.utc)
+
+def _token_digest(token):
+    return hashlib.sha256(token.encode('utf-8')).hexdigest()
+
+def _audit(user, action, resource, resource_id='', details=None):
+    c = connect()
+    c.execute('INSERT INTO audit_log(workspace_id,user_id,action,resource,resource_id,details_json) VALUES(?,?,?,?,?,?)',
+              (user['workspace_id'], user['id'], action, resource, str(resource_id or ''),
+               json.dumps(details or {}, ensure_ascii=False)[:4000]))
+    c.commit()
+    c.close()
+
+def _public_user(row):
+    return {'id': row['id'], 'email': row['email'], 'display_name': row['display_name'],
+            'role': row['role'], 'workspace_id': row['workspace_id'],
+            'is_active': bool(row['is_active']), 'created_at': row['created_at']}
+
+def _auth_user_from_request():
+    header = request.headers.get('Authorization', '')
+    if not header.startswith('Bearer '):
+        return None
+    token = header[7:].strip()
+    if len(token) < 32 or len(token) > 256:
+        return None
+    c = connect()
+    row = c.execute("""SELECT u.*, w.name AS workspace_name, t.expires_at
+                       FROM api_tokens t JOIN users u ON u.id=t.user_id
+                       JOIN workspaces w ON w.id=u.workspace_id
+                       WHERE t.token_hash=? AND t.revoked_at IS NULL AND u.is_active=1""",
+                    (_token_digest(token),)).fetchone()
+    c.close()
+    if not row or row['expires_at'] <= _utc_now().isoformat():
+        return None
+    return dict(row)
+
+@app.before_request
+def enforce_api_authentication():
+    if request.method == 'OPTIONS':
+        return None
+    if request.path.startswith('/uploads/'):
+        user = _auth_user_from_request()
+        if not user:
+            return jsonify({'error':'Authentification requise ou session expirée.', 'code':'AUTH_REQUIRED'}), 401
+        g.current_user = user
+        return None
+    if not request.path.startswith('/api/'):
+        return None
+    if request.endpoint == 'auth_login':
+        return None
+    if request.endpoint in PUBLIC_API_ENDPOINTS:
+        return None
+    user = _auth_user_from_request()
+    if not user:
+        return jsonify({'error':'Authentification requise ou session expirée.', 'code':'AUTH_REQUIRED'}), 401
+    g.current_user = user
+    return None
+
+@app.post('/api/auth/login')
+def auth_login():
+    d = request.get_json(silent=True) or {}
+    email = str(d.get('email','')).strip().lower()[:254]
+    password = str(d.get('password',''))
+    ip_hash = hashlib.sha256((request.remote_addr or 'unknown').encode()).hexdigest()
+    now = _utc_now()
+    c = connect()
+    attempts = c.execute("SELECT COUNT(*) FROM auth_login_attempts WHERE ip_hash=? AND success=0 AND created_at>=?",
+                         (ip_hash, (now-timedelta(minutes=15)).isoformat())).fetchone()[0]
+    if attempts >= 10:
+        c.close()
+        return jsonify({'error':'Trop de tentatives. Réessaie dans 15 minutes.'}), 429
+    row = c.execute('SELECT * FROM users WHERE email=? AND is_active=1', (email,)).fetchone()
+    if not row or not check_password_hash(row['password_hash'], password):
+        c.execute('INSERT INTO auth_login_attempts(ip_hash,email,success,created_at) VALUES(?,?,0,?)',
+                  (ip_hash, email, now.isoformat()))
+        c.commit(); c.close()
+        return jsonify({'error':'Identifiants incorrects.'}), 401
+    c.execute('DELETE FROM auth_login_attempts WHERE ip_hash=? AND success=0', (ip_hash,))
+    token = secrets.token_urlsafe(48)
+    expires = (now+timedelta(hours=TOKEN_LIFETIME_HOURS)).isoformat()
+    c.execute('INSERT INTO api_tokens(token_hash,user_id,expires_at) VALUES(?,?,?)',
+              (_token_digest(token), row['id'], expires))
+    c.execute('INSERT INTO auth_login_attempts(ip_hash,email,success,created_at) VALUES(?,?,1,?)',
+              (ip_hash, email, now.isoformat()))
+    c.execute('INSERT INTO audit_log(workspace_id,user_id,action,resource,details_json) VALUES(?,?,?,?,?)',
+              (row['workspace_id'], row['id'], 'LOGIN', 'auth', '{}'))
+    c.commit()
+    user = dict(row)
+    c.close()
+    return jsonify({'token':token, 'token_type':'Bearer', 'expires_at':expires,
+                    'user':_public_user(user), 'workspace':{'id':user['workspace_id'],'name':'CHRONOS LAB'}})
+
+@app.post('/api/auth/logout')
+def auth_logout():
+    token = request.headers.get('Authorization','')[7:].strip()
+    c=connect()
+    c.execute('UPDATE api_tokens SET revoked_at=? WHERE token_hash=? AND revoked_at IS NULL',
+              (_utc_now().isoformat(), _token_digest(token)))
+    c.execute('INSERT INTO audit_log(workspace_id,user_id,action,resource,details_json) VALUES(?,?,?,?,?)',
+              (g.current_user['workspace_id'],g.current_user['id'],'LOGOUT','auth','{}'))
+    c.commit(); c.close()
+    return jsonify({'ok':True})
+
+@app.get('/api/auth/me')
+def auth_me():
+    return jsonify({'user':_public_user(g.current_user), 'workspace':{'id':g.current_user['workspace_id'],'name':g.current_user['workspace_name']},
+                    'token_expires_at':g.current_user['expires_at']})
+
+@app.get('/api/auth/users')
+def auth_list_users():
+    if g.current_user['role'] != 'admin':
+        return jsonify({'error':'Réservé à l’administrateur.'}), 403
+    c=connect()
+    rows=c.execute('SELECT * FROM users WHERE workspace_id=? ORDER BY created_at DESC',
+                   (g.current_user['workspace_id'],)).fetchall()
+    c.close()
+    return jsonify([_public_user(r) for r in rows])
+
+@app.post('/api/auth/users')
+def auth_create_user():
+    if g.current_user['role'] != 'admin':
+        return jsonify({'error':'Seul l’administrateur peut créer des comptes.'}), 403
+    d=request.get_json(silent=True) or {}
+    email=str(d.get('email','')).strip().lower()
+    name=str(d.get('display_name','')).strip()
+    password=str(d.get('password',''))
+    role=str(d.get('role','researcher')).strip()
+    if not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+',email) or len(email)>254:
+        return jsonify({'error':'Adresse e-mail invalide.'}),400
+    if not name or len(name)>120:
+        return jsonify({'error':'Le nom affiché est obligatoire (120 caractères maximum).'}),400
+    if len(password)<14 or len(password)>256:
+        return jsonify({'error':'Le mot de passe initial doit contenir au moins 14 caractères.'}),400
+    if role not in ('researcher','evaluator'):
+        return jsonify({'error':'Rôle autorisé : researcher ou evaluator.'}),400
+    c=connect()
+    try:
+        cur=c.execute('INSERT INTO users(email,display_name,password_hash,role,workspace_id) VALUES(?,?,?,?,?)',
+                      (email,name,generate_password_hash(password),role,g.current_user['workspace_id']))
+        user_id=cur.lastrowid
+        c.execute('INSERT INTO audit_log(workspace_id,user_id,action,resource,resource_id,details_json) VALUES(?,?,?,?,?,?)',
+                  (g.current_user['workspace_id'],g.current_user['id'],'USER_CREATED','user',str(user_id),
+                   json.dumps({'role':role,'email':email})))
+        c.commit()
+        row=c.execute('SELECT * FROM users WHERE id=?',(user_id,)).fetchone()
+        return jsonify({'ok':True,'user':_public_user(row)}),201
+    except sqlite3.IntegrityError:
+        c.rollback()
+        return jsonify({'error':'Un compte utilise déjà cette adresse e-mail.'}),409
+    finally:
+        c.close()
+
+def _require_roles(*roles):
+    if g.current_user['role'] not in roles:
+        return jsonify({'error':'Permission insuffisante pour cette action.'}),403
+    return None
+
+def _record_dict(row):
+    return {k:row[k] for k in row.keys()}
+
+@app.get('/api/v2/experiments')
+def v2_list_experiments():
+    c=connect()
+    rows=c.execute('SELECT * FROM experiments WHERE workspace_id=? ORDER BY created_at DESC',
+                    (g.current_user['workspace_id'],)).fetchall()
+    c.close()
+    return jsonify([_record_dict(r) for r in rows])
+
+@app.post('/api/v2/experiments')
+def v2_create_experiment():
+    denied=_require_roles('admin','researcher')
+    if denied: return denied
+    d=request.get_json(silent=True) or {}
+    name=str(d.get('name','')).strip(); model=str(d.get('model','')).strip()
+    dataset=str(d.get('dataset','')).strip()
+    if not name or not model or not dataset:
+        return jsonify({'error':'Le nom, le modèle et le jeu de données sont obligatoires.'}),400
+    if any(len(str(d.get(k,'')))>10000 for k in ('parameters','notes')) or max(len(name),len(model),len(dataset))>250:
+        return jsonify({'error':'Un champ dépasse la taille autorisée.'}),400
+    ident=secrets.token_hex(16); created=_utc_now().isoformat(); c=connect()
+    c.execute('INSERT INTO experiments(id,workspace_id,created_by,name,model,version,dataset,parameters,notes,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)',
+              (ident,g.current_user['workspace_id'],g.current_user['id'],name,model,str(d.get('version',''))[:250],
+               dataset,str(d.get('parameters','')),str(d.get('notes','')),created))
+    c.execute('INSERT INTO audit_log(workspace_id,user_id,action,resource,resource_id,details_json) VALUES(?,?,?,?,?,?)',
+              (g.current_user['workspace_id'],g.current_user['id'],'EXPERIMENT_CREATED','experiment',ident,json.dumps({'name':name})))
+    c.commit(); row=c.execute('SELECT * FROM experiments WHERE id=?',(ident,)).fetchone(); c.close()
+    return jsonify(_record_dict(row)),201
+
+@app.delete('/api/v2/experiments/<string:experiment_id>')
+def v2_delete_experiment(experiment_id):
+    denied=_require_roles('admin','researcher')
+    if denied: return denied
+    c=connect()
+    row=c.execute('SELECT * FROM experiments WHERE id=? AND workspace_id=?',
+                  (experiment_id,g.current_user['workspace_id'])).fetchone()
+    if not row:
+        c.close(); return jsonify({'error':'Expérience introuvable.'}),404
+    if g.current_user['role']!='admin' and row['created_by']!=g.current_user['id']:
+        c.close(); return jsonify({'error':'Tu peux supprimer uniquement tes propres expériences.'}),403
+    c.execute('DELETE FROM experiments WHERE id=?',(experiment_id,))
+    c.execute('INSERT INTO audit_log(workspace_id,user_id,action,resource,resource_id,details_json) VALUES(?,?,?,?,?,?)',
+              (g.current_user['workspace_id'],g.current_user['id'],'EXPERIMENT_DELETED','experiment',experiment_id,'{}'))
+    c.commit(); c.close()
+    return jsonify({'ok':True})
+
+@app.get('/api/v2/validations')
+def v2_list_validations():
+    c=connect()
+    rows=c.execute('SELECT * FROM validations WHERE workspace_id=? ORDER BY created_at DESC',
+                    (g.current_user['workspace_id'],)).fetchall()
+    c.close()
+    return jsonify([_record_dict(r) for r in rows])
+
+@app.post('/api/v2/validations')
+def v2_create_validation():
+    denied=_require_roles('admin','researcher','evaluator')
+    if denied: return denied
+    d=request.get_json(silent=True) or {}
+    model=str(d.get('model','')).strip(); dataset=str(d.get('dataset','')).strip()
+    protocol=str(d.get('protocol','')).strip()
+    if not model or not dataset or not protocol:
+        return jsonify({'error':'Le modèle, le jeu de test et le protocole sont obligatoires.'}),400
+    try:
+        precision=float(d.get('precision')); recall=float(d.get('recall')); f1=float(d.get('f1')); samples=int(d.get('samples'))
+    except (TypeError,ValueError):
+        return jsonify({'error':'Les métriques doivent être numériques.'}),400
+    if any(not math.isfinite(x) or x<0 or x>100 for x in (precision,recall,f1)) or samples<0:
+        return jsonify({'error':'Les scores doivent être entre 0 et 100 et les échantillons positifs ou nuls.'}),400
+    ident=secrets.token_hex(16); created=_utc_now().isoformat(); c=connect()
+    c.execute('INSERT INTO validations(id,workspace_id,created_by,model,dataset,precision,recall,f1,samples,protocol,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
+              (ident,g.current_user['workspace_id'],g.current_user['id'],model,dataset,precision,recall,f1,samples,protocol,created))
+    c.execute('INSERT INTO audit_log(workspace_id,user_id,action,resource,resource_id,details_json) VALUES(?,?,?,?,?,?)',
+              (g.current_user['workspace_id'],g.current_user['id'],'VALIDATION_CREATED','validation',ident,json.dumps({'model':model,'dataset':dataset})))
+    c.commit(); row=c.execute('SELECT * FROM validations WHERE id=?',(ident,)).fetchone(); c.close()
+    return jsonify(_record_dict(row)),201
+
+@app.delete('/api/v2/validations/<string:validation_id>')
+def v2_delete_validation(validation_id):
+    denied=_require_roles('admin')
+    if denied: return denied
+    c=connect()
+    row=c.execute('SELECT id FROM validations WHERE id=? AND workspace_id=?',(validation_id,g.current_user['workspace_id'])).fetchone()
+    if not row:
+        c.close(); return jsonify({'error':'Évaluation introuvable.'}),404
+    c.execute('DELETE FROM validations WHERE id=?',(validation_id,))
+    c.execute('INSERT INTO audit_log(workspace_id,user_id,action,resource,resource_id,details_json) VALUES(?,?,?,?,?,?)',
+              (g.current_user['workspace_id'],g.current_user['id'],'VALIDATION_DELETED','validation',validation_id,'{}'))
+    c.commit(); c.close()
+    return jsonify({'ok':True})
+
+@app.get('/api/v2/audit')
+def v2_audit_log():
+    if g.current_user['role']!='admin':
+        return jsonify({'error':'Réservé à l’administrateur.'}),403
+    c=connect()
+    rows=c.execute('SELECT id,user_id,action,resource,resource_id,details_json,created_at FROM audit_log WHERE workspace_id=? ORDER BY id DESC LIMIT 500',
+                   (g.current_user['workspace_id'],)).fetchall()
+    c.close()
+    return jsonify([_record_dict(r) for r in rows])
+
+def bootstrap_admin():
+    email=os.environ.get('CHRONOS_BOOTSTRAP_ADMIN_EMAIL','').strip().lower()
+    password=os.environ.get('CHRONOS_BOOTSTRAP_ADMIN_PASSWORD','')
+    if not email or not password:
+        return
+    if len(password)<14:
+        app.logger.error('CHRONOS_BOOTSTRAP_ADMIN_PASSWORD must contain at least 14 characters; admin was not bootstrapped.')
+        return
+    c=connect()
+    existing=c.execute('SELECT id FROM users WHERE email=?',(email,)).fetchone()
+    if not existing:
+        c.execute('INSERT INTO users(email,display_name,password_hash,role,workspace_id) VALUES(?,?,?,?,1)',
+                  (email,email.split('@')[0],generate_password_hash(password),'admin'))
+        c.commit()
+        app.logger.warning('Initial CHRONOS LAB admin account created from environment configuration.')
+    c.close()
+
+bootstrap_admin()
 
 if __name__=='__main__':
     host = os.environ.get('CHRONOS_HOST', '127.0.0.1')

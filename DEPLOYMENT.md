@@ -56,3 +56,40 @@ L'application sera accessible sur `http://localhost:8000` et conservera ses donn
 ## E. Contrôles automatiques
 
 À chaque push/PR, `.github/workflows/tests.yml` vérifie la syntaxe Python et JavaScript et lance les tests API. Le workflow Pages valide le paquet statique puis publie le dossier `site/`.
+
+
+## F. Backend avec comptes chercheurs et stockage partagé (V2)
+
+La V2 utilise le backend pour stocker les expériences et évaluations dans SQLite. Les données ne dépendent donc plus du navigateur qui les a créées. Les tables sont rattachées à l'espace de travail CHRONOS LAB. Les fiches V2 ne doivent pas être utilisées avec plusieurs instances de base SQLite non partagée.
+
+### Variables d'environnement obligatoires en production
+
+Configure-les dans le panneau privé de l'hébergeur, jamais dans le dépôt public :
+
+- `CHRONOS_BOOTSTRAP_ADMIN_EMAIL` : adresse du premier administrateur.
+- `CHRONOS_BOOTSTRAP_ADMIN_PASSWORD` : mot de passe unique d'au moins 14 caractères. Il n'est utilisé qu'à la création initiale du compte ; changer la variable ne remplace pas le mot de passe d'un compte déjà créé.
+- `CHRONOS_ALLOWED_ORIGINS=https://infotelcom.github.io` : autorise uniquement l'interface GitHub Pages. Ajoute une autre origine seulement si tu la contrôles.
+- `CHRONOS_DATA_DIR=/var/data` : dossier persistant pour la base SQLite et les fichiers.
+
+Le premier administrateur est créé automatiquement au démarrage lorsque les deux variables de bootstrap sont valides. Si le compte existe déjà, le démarrage ne réinitialise pas son mot de passe. Utilise un volume disque persistant et des sauvegardes testées ; le volume éphémère d'un hébergeur ne convient pas.
+
+### Première connexion et gestion des comptes
+
+1. Déploie le backend Docker/Gunicorn sur un hébergeur Python avec HTTPS et un disque persistant.
+2. Configure les quatre variables ci-dessus, puis redémarre le service.
+3. Dans [CHRONOS LAB V2](https://infotelcom.github.io/CHRONOS-LAB/v2.html), ouvre « Données & connexion », colle l'URL HTTPS du backend, puis enregistre-la.
+4. Connecte-toi avec l'e-mail et le mot de passe admin définis dans les variables privées.
+5. Depuis « Accès au laboratoire », crée les comptes chercheurs et évaluateurs. Le formulaire public d'inscription est volontairement absent.
+
+### Rôles
+
+- **admin** : crée les comptes, consulte le journal d'audit et gère les fiches de l'espace.
+- **researcher** : crée des expériences et des évaluations ; peut supprimer uniquement ses propres expériences.
+- **evaluator** : consulte les expériences et peut consigner des évaluations, sans créer d'expérience.
+- Les jetons expirent après 8 heures et sont stockés dans `sessionStorage` du navigateur. Déconnexion = révocation du jeton côté serveur.
+
+### Limites à respecter
+
+La base initiale est conçue pour une équipe CHRONOS LAB dans un espace partagé ; elle ne propose pas encore la création d'organisations indépendantes avec administrateurs séparés. Les comptes d'une même équipe partagent les données de recherche. Pour une plateforme multi-organisations, ajouter une gestion de tenants et tester l'isolation de toutes les tables existantes. Le backend exige désormais une authentification sur les routes privées de l'API et les fichiers téléversés ; les routes de calcul/publication de statut restent accessibles sans connexion.
+
+Les scores de précision, rappel et F1 saisis dans l'interface restent des valeurs déclaratives. Cette couche d'authentification ne constitue pas une validation scientifique automatique.

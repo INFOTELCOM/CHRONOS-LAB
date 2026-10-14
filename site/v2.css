@@ -26,3 +26,5 @@
 @media print{.topbar,.tabs,.btn,.v2-actions,footer,#toast{display:none!important}main{max-width:none;padding:0}.view{display:none!important}.view.active{display:block!important}.v2-card{background:white!important;color:#111!important;border:1px solid #ccc!important;break-inside:avoid}.v2-card p,.v2-muted,.v2-head p{color:#333!important}}
 
 .tab{text-decoration:none}.v2-checklist{display:grid;gap:10px}.v2-check{display:flex;gap:10px;align-items:flex-start;padding:12px;border:1px solid var(--line);border-radius:10px;color:#c7d7ee;font-size:11px;line-height:1.6}.v2-check b{display:block;color:#eff7ff;margin-bottom:2px}.v2-success{color:#8ce5bd}.v2-danger{color:#ffb2ba}
+
+.v2-form input[type=password]{letter-spacing:.3px}.v2-auth-state{padding:10px 12px;border:1px solid var(--line);border-radius:10px;margin-top:12px}.v2-auth-help{font-size:11px;color:var(--muted);line-height:1.65}.v2-card button[hidden],.v2-form[hidden]{display:none!important}

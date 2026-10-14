@@ -135,3 +135,7 @@ Le backend Flask contient des routes d'écriture et ne fournit pas encore une au
 ## Évaluation indépendante
 
 Lire [`SCIENTIFIC_VALIDATION_PROTOCOL.md`](SCIENTIFIC_VALIDATION_PROTOCOL.md). Le script `evaluate_independent_glyphs.py --script maya_classical` exige un corpus test indépendant, un manifeste complet et l'absence de chevauchement d'identifiants d'artefacts avec l'entraînement. Il produit un rapport technique et n'émet jamais de certification scientifique.
+
+## Stockage serveur et accès chercheurs
+
+La V2 peut enregistrer ses expériences et évaluations dans le backend Flask via des routes authentifiées. Les comptes sont créés par l'administrateur après configuration de `CHRONOS_BOOTSTRAP_ADMIN_EMAIL` et `CHRONOS_BOOTSTRAP_ADMIN_PASSWORD` dans l'environnement privé du backend. Consulte [DEPLOYMENT.md](DEPLOYMENT.md) pour la configuration HTTPS, CORS, stockage persistant, rôles et limites actuelles. Ne place jamais de vrais secrets dans le dépôt public.
