@@ -91,6 +91,27 @@
  });
  $('#clExportNotes')?.addEventListener('click',async()=>{try{const rows=[['date','type','titre','experience','note'],...(await listItems('note')).map(x=>[x.at,x.kind,x.title,x.experiment,x.body])];const csv=rows.map(r=>r.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');download('chronos-lab-carnet.csv','\uFEFF'+csv,'text/csv;charset=utf-8')}catch(e){status(e.message)}});
  $('#clClearCompleted')?.addEventListener('click',async()=>{try{const all=await listItems('task'),done=all.filter(x=>x.done);for(const task of done)await removeItem('task',task.id);await render();status(done.length+' tâche(s) terminée(s) supprimée(s).')}catch(e){status(e.message)}});
+
+ $('#clImportLocal')?.addEventListener('click',async()=>{
+  user=who();
+  if(!remote){status('Connecte-toi au backend avant d’importer les fiches locales.');return}
+  if(!user||!['admin','researcher'].includes(user.role)){status('Le rôle évaluateur ne peut pas importer ou créer des ressources.');return}
+  const button=$('#clImportLocal');button.disabled=true;let added=0,skipped=0;
+  const fields={note:['title','kind','experiment','body'],hypothesis:['claim','criterion','status','evidence'],dataset:['name','source','license','filename','hash','size_bytes'],task:['title','owner','priority','done']};
+  try{
+   for(const type of ['note','hypothesis','dataset','task']){
+    const local=read(keys[mapType(type)]),remoteRows=await listItems(type),known=new Set(remoteRows.map(x=>JSON.stringify(fields[type].map(k=>x[k]??''))));
+    for(const row of local){
+     const payload={};fields[type].forEach(k=>payload[k]=row[k]??(k==='done'?false:''));
+     const sig=JSON.stringify(fields[type].map(k=>payload[k]??''));
+     if(known.has(sig)){skipped++;continue}
+     await createItem(type,payload);known.add(sig);added++;
+    }
+   }
+   await render();status('Import terminé : '+added+' fiche(s) ajoutée(s), '+skipped+' doublon(s) ignoré(s). Les données locales originales sont conservées.');
+  }catch(err){status('Import interrompu après '+added+' ajout(s) : '+err.message+'. Relance après vérification ; les doublons identiques sont ignorés.')}
+  finally{button.disabled=false}
+ });
  async function authChanged(){
   user=who();remote=!!(api()&&token()&&user);
   const badge=$('#clStorageMode');if(badge)badge.textContent=remote?'SERVEUR · PARTAGÉ':'LOCAL · NAVIGATEUR';
