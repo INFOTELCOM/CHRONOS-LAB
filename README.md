@@ -6,6 +6,16 @@
 
 CHRONOS Lab est une application web locale exécutable, avec API Python/Flask et base SQLite. Ce n'est pas un déchiffreur universel et ne prétend pas l'être : aucun logiciel ne peut garantir la traduction de tout symbole inconnu sans contexte, corpus de référence et validation experte.
 
+## CHRONOS LAB V2 — espace de travail scientifique
+
+Une nouvelle interface est disponible à l'adresse Pages `/v2.html` et depuis le lien V2 de la page d'accueil. Elle ajoute un tableau de bord, un laboratoire d'images relié à l'API Flask existante, des fiches d'expériences et de validation, ainsi que des exports JSON/CSV et une mise en page imprimable en PDF.
+
+- Ouvrir la version V2 : [CHRONOS LAB V2](https://infotelcom.github.io/CHRONOS-LAB/v2.html)
+- Les expériences et métriques de la V2 sont conservées dans le `localStorage` du navigateur : pas de synchronisation ni de sauvegarde serveur automatique.
+- Le formulaire d'analyse d'image appelle `POST /api/analyze-image` sur l'API configurée. Le backend doit être accessible en HTTPS et autoriser explicitement l'origine Pages dans `CHRONOS_ALLOWED_ORIGINS`.
+- Les scores saisis dans la V2 sont déclaratifs : ils ne sont pas recalculés depuis les prédictions. Pour les exigences de sécurité avant une exposition publique, lire [SECURITY.md](SECURITY.md).
+
+
 ## Fonctionnalités réellement implémentées
 
 - **Calendrier maya** : calcul du Tzolk'in, Haab' et Compte long à partir d'une date grégorienne, avec corrélations GMT 584283, 584285 et 584286 sélectionnables.
