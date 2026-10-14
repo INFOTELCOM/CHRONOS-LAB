@@ -114,6 +114,13 @@ def connect():
         resource_id TEXT DEFAULT '', details_json TEXT NOT NULL DEFAULT '{}',
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(workspace_id) REFERENCES workspaces(id))""")
+    c.execute("""CREATE TABLE IF NOT EXISTS research_artifacts (
+        id TEXT PRIMARY KEY, workspace_id INTEGER NOT NULL, created_by INTEGER NOT NULL,
+        artifact_type TEXT NOT NULL CHECK(artifact_type IN ('note','hypothesis','dataset','task')),
+        payload_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        FOREIGN KEY(workspace_id) REFERENCES workspaces(id),
+        FOREIGN KEY(created_by) REFERENCES users(id))""")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_research_artifacts_workspace_type ON research_artifacts(workspace_id,artifact_type,updated_at)")
     c.commit(); return c
 connect().close()
 
@@ -919,6 +926,125 @@ def _require_roles(*roles):
 
 def _record_dict(row):
     return {k:row[k] for k in row.keys()}
+
+
+RESEARCH_ARTIFACT_TYPES = {'note', 'hypothesis', 'dataset', 'task'}
+RESEARCH_ARTIFACT_FIELDS = {
+    'note': {'title': 140, 'kind': 60, 'experiment': 140, 'body': 5000},
+    'hypothesis': {'claim': 500, 'criterion': 300, 'status': 60, 'evidence': 2000},
+    'dataset': {'name': 160, 'source': 300, 'license': 160, 'filename': 255, 'hash': 64, 'size_bytes': 20},
+    'task': {'title': 220, 'owner': 120, 'priority': 30, 'done': 5},
+}
+
+def _clean_research_payload(kind, payload):
+    if not isinstance(payload, dict):
+        raise ValueError('Le contenu doit être un objet JSON.')
+    limits = RESEARCH_ARTIFACT_FIELDS[kind]
+    clean = {}
+    for key, limit in limits.items():
+        value = payload.get(key, '')
+        if key == 'done':
+            clean[key] = bool(value)
+            continue
+        if key == 'size_bytes':
+            try: value = int(value)
+            except (TypeError, ValueError): value = 0
+            if value < 0: raise ValueError('La taille du fichier est invalide.')
+            clean[key] = value
+            continue
+        value = str(value if value is not None else '').strip()
+        if len(value) > limit:
+            raise ValueError('Le champ "' + key + '" dépasse la taille autorisée.')
+        clean[key] = value
+    if kind == 'dataset':
+        digest = clean.get('hash', '')
+        if digest and not re.fullmatch(r'[a-fA-F0-9]{64}', digest):
+            raise ValueError('L’empreinte doit être un SHA-256 hexadécimal.')
+    return clean
+
+def _research_artifact_dict(row):
+    item = dict(row)
+    try: item['payload'] = json.loads(item.pop('payload_json'))
+    except (ValueError, TypeError): item['payload'] = {}
+    return item
+
+@app.get('/api/v2/research-artifacts')
+def v2_list_research_artifacts():
+    kind = request.args.get('type', '').strip()
+    if kind and kind not in RESEARCH_ARTIFACT_TYPES:
+        return jsonify({'error':'Type de ressource invalide.'}), 400
+    c = connect()
+    if kind:
+        rows = c.execute('SELECT * FROM research_artifacts WHERE workspace_id=? AND artifact_type=? ORDER BY updated_at DESC',
+                         (g.current_user['workspace_id'], kind)).fetchall()
+    else:
+        rows = c.execute('SELECT * FROM research_artifacts WHERE workspace_id=? ORDER BY updated_at DESC',
+                         (g.current_user['workspace_id'],)).fetchall()
+    c.close()
+    return jsonify([_research_artifact_dict(r) for r in rows])
+
+@app.post('/api/v2/research-artifacts')
+def v2_create_research_artifact():
+    denied = _require_roles('admin', 'researcher')
+    if denied: return denied
+    data = request.get_json(silent=True) or {}
+    kind = str(data.get('type', '')).strip()
+    if kind not in RESEARCH_ARTIFACT_TYPES:
+        return jsonify({'error':'Type de ressource invalide.'}), 400
+    try: payload = _clean_research_payload(kind, data.get('payload', {}))
+    except ValueError as exc: return jsonify({'error':str(exc)}), 400
+    ident = secrets.token_hex(16); now = _utc_now().isoformat()
+    c = connect()
+    c.execute('INSERT INTO research_artifacts(id,workspace_id,created_by,artifact_type,payload_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?)',
+              (ident,g.current_user['workspace_id'],g.current_user['id'],kind,json.dumps(payload,ensure_ascii=False),now,now))
+    c.execute('INSERT INTO audit_log(workspace_id,user_id,action,resource,resource_id,details_json) VALUES(?,?,?,?,?,?)',
+              (g.current_user['workspace_id'],g.current_user['id'],'RESEARCH_ARTIFACT_CREATED',kind,ident,json.dumps({'type':kind})))
+    c.commit()
+    row = c.execute('SELECT * FROM research_artifacts WHERE id=?',(ident,)).fetchone()
+    c.close()
+    return jsonify(_research_artifact_dict(row)), 201
+
+@app.put('/api/v2/research-artifacts/<string:artifact_id>')
+def v2_update_research_artifact(artifact_id):
+    denied = _require_roles('admin', 'researcher')
+    if denied: return denied
+    data = request.get_json(silent=True) or {}
+    c = connect()
+    row = c.execute('SELECT * FROM research_artifacts WHERE id=? AND workspace_id=?',
+                    (artifact_id,g.current_user['workspace_id'])).fetchone()
+    if not row:
+        c.close(); return jsonify({'error':'Ressource introuvable.'}),404
+    if g.current_user['role'] != 'admin' and row['created_by'] != g.current_user['id']:
+        c.close(); return jsonify({'error':'Tu peux modifier uniquement tes propres ressources.'}),403
+    try: payload = _clean_research_payload(row['artifact_type'], data.get('payload', {}))
+    except ValueError as exc:
+        c.close(); return jsonify({'error':str(exc)}),400
+    now = _utc_now().isoformat()
+    c.execute('UPDATE research_artifacts SET payload_json=?,updated_at=? WHERE id=?',
+              (json.dumps(payload,ensure_ascii=False),now,artifact_id))
+    c.execute('INSERT INTO audit_log(workspace_id,user_id,action,resource,resource_id,details_json) VALUES(?,?,?,?,?,?)',
+              (g.current_user['workspace_id'],g.current_user['id'],'RESEARCH_ARTIFACT_UPDATED',row['artifact_type'],artifact_id,'{}'))
+    c.commit()
+    updated = c.execute('SELECT * FROM research_artifacts WHERE id=?',(artifact_id,)).fetchone()
+    c.close()
+    return jsonify(_research_artifact_dict(updated))
+
+@app.delete('/api/v2/research-artifacts/<string:artifact_id>')
+def v2_delete_research_artifact(artifact_id):
+    denied = _require_roles('admin', 'researcher')
+    if denied: return denied
+    c = connect()
+    row = c.execute('SELECT * FROM research_artifacts WHERE id=? AND workspace_id=?',
+                    (artifact_id,g.current_user['workspace_id'])).fetchone()
+    if not row:
+        c.close(); return jsonify({'error':'Ressource introuvable.'}),404
+    if g.current_user['role'] != 'admin' and row['created_by'] != g.current_user['id']:
+        c.close(); return jsonify({'error':'Tu peux supprimer uniquement tes propres ressources.'}),403
+    c.execute('DELETE FROM research_artifacts WHERE id=?',(artifact_id,))
+    c.execute('INSERT INTO audit_log(workspace_id,user_id,action,resource,resource_id,details_json) VALUES(?,?,?,?,?,?)',
+              (g.current_user['workspace_id'],g.current_user['id'],'RESEARCH_ARTIFACT_DELETED',row['artifact_type'],artifact_id,'{}'))
+    c.commit(); c.close()
+    return jsonify({'ok':True,'id':artifact_id})
 
 @app.get('/api/v2/experiments')
 def v2_list_experiments():
