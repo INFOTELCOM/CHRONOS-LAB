@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#071126"><meta name="description" content="CHRONOS LAB V2 — laboratoire de recherche, traçabilité, glyphes et validation scientifique.">
+<title>CHRONOS LAB V2 — Scientific Workbench</title>
+<link rel="stylesheet" href="./style.css"><link rel="stylesheet" href="./v2.css">
+</head>
+<body>
+<header class="topbar"><a class="brand" href="./index.html"><span class="sigil">C</span><span><b>CHRONOS <i>LAB</i></b><small>SCIENTIFIC WORKBENCH · V2</small></span></a><div class="top-actions"><span class="local-pill"><span></span> Données locales</span><a class="btn btn-quiet" href="./index.html">Espace documentaire ↗</a></div></header>
+<main>
+<section class="hero"><div class="hero-copy"><div class="v2-kicker">RECHERCHE · VISION · REPRODUCTIBILITÉ</div><h1>Mesurer avec rigueur.<br><em>Rendre l’incertitude visible.</em></h1><p>Un espace de travail pour suivre les expériences, examiner les glyphes, consigner des métriques et préparer des rapports vérifiables. Les données ajoutées ici sont stockées dans ce navigateur, sauf l’analyse d’image envoyée à l’API Flask configurée.</p><div class="hero-badges"><span>✳ Hypothèses non certifiées</span><span>⌁ Traçabilité des expériences</span><span>◈ Exports JSON / CSV / PDF</span></div></div><div class="hero-stamp"><div class="orbit orbit-a"></div><div class="orbit orbit-b"></div><div class="core">CH<br><small>LAB</small></div><div class="stamp-caption">HYPOTHÈSE ≠ FAIT</div></div></section>
+<div class="v2-notice warn">Garde-fou scientifique : les résultats d’un modèle, les scores de confiance et les avis consignés ne constituent pas à eux seuls une preuve historique. Les métriques saisies manuellement restent déclaratives tant que leur source n’est pas vérifiée.</div>
+<section id="dashboard"><div class="v2-head"><div><div class="v2-kicker">01 · OVERVIEW</div><h2>Tableau de bord scientifique</h2><p>Indicateurs du navigateur actuel et historique des évaluations enregistrées.</p></div></div>
+<div class="v2-grid">
+<article class="v2-card"><span class="v2-muted">Hypothèses documentées</span><strong class="v2-value" id="v2ClaimCount">0</strong><p>Depuis l’espace documentaire existant.</p></article>
+<article class="v2-card"><span class="v2-muted">Expériences suivies</span><strong class="v2-value" id="v2ExperimentCount">0</strong><p>Paramètres et versions consignés.</p></article>
+<article class="v2-card"><span class="v2-muted">Évaluations consignées</span><strong class="v2-value" id="v2ValidationCount">0</strong><p>Fiches enregistrées dans ce navigateur.</p></article>
+<article class="v2-card"><span class="v2-muted">F1 moyen déclaré</span><strong class="v2-value" id="v2AverageF1">—</strong><p>Calculé à partir des fiches saisies ici.</p></article>
+<article class="v2-card"><span class="v2-muted">Événements documentaires</span><strong class="v2-value" id="v2EventCount">0</strong><p>Journal de l’espace documentaire.</p></article>
+<article class="v2-card"><span class="v2-muted">Backend</span><strong class="v2-value" style="font-size:18px">À vérifier</strong><p>Configure l’API pour lancer l’analyse des images.</p></article>
+</div>
+<div class="v2-card" style="margin-top:14px"><h3>Historique des scores consignés</h3><div id="v2ValidationChart" class="v2-chart"></div></div></section>
+<section id="glyphlab" style="padding-top:36px"><div class="v2-head"><div><div class="v2-kicker">02 · COMPUTER VISION</div><h2>Laboratoire d’analyse des glyphes</h2><p>Import, segmentation et reconnaissance via le backend Flask existant. Le serveur et un modèle compatible sont nécessaires.</p></div><span class="status-tag">API REQUISE</span></div>
+<div class="v2-grid" style="grid-template-columns:repeat(2,minmax(0,1fr))"><article class="v2-card"><h3>Préparer un échantillon</h3><form id="v2AnalyzeImage" class="v2-form">
+<label class="v2-span">Image<input id="v2Image" type="file" accept="image/png,image/jpeg,image/webp,image/bmp,image/tiff" required></label>
+<label>Système d’écriture<select id="v2Script"><option value="general">Général / modèle compatible</option><option value="maya_classical">Maya classique</option><option value="egyptian_hieroglyphs">Hiéroglyphes égyptiens</option><option value="cuneiform">Cunéiforme</option><option value="linear_b">Linéaire B</option><option value="linear_a">Linéaire A</option></select></label>
+<label>Segmentation<select id="v2Segmentation"><option value="components">Composants connectés</option><option value="watershed">Watershed</option><option value="ensemble">Ensemble</option></select></label>
+<div class="v2-span"><button class="btn btn-primary" type="submit">Lancer l’analyse via Flask</button></div></form><img id="v2ImagePreview" class="v2-preview" alt="Aperçu de l’image sélectionnée" hidden></article>
+<article class="v2-card"><h3>Résultats</h3><pre id="v2GlyphResult" class="v2-result" aria-live="polite">Sélectionne une image et configure l’API dans l’espace de connexion ci-dessous.</pre><img id="v2ServerPreview" class="v2-preview" alt="Aperçu de la segmentation" hidden></article></div>
+<div class="v2-card" style="margin-top:14px"><h3>État du backend, des modèles et du corpus</h3><button id="v2CheckBackend" class="btn btn-quiet">Vérifier le backend</button><pre id="v2BackendStatus" class="v2-result">Aucune vérification lancée.</pre></div></section>
+<section id="experiments" style="padding-top:36px"><div class="v2-head"><div><div class="v2-kicker">03 · EXPERIMENT TRACKING</div><h2>Expériences et versions des modèles</h2><p>Chaque fiche conserve l’objectif, le modèle, le jeu de données et les paramètres. Stockage local au navigateur.</p></div></div>
+<article class="v2-card"><form id="v2ExperimentForm" class="v2-form">
+<label>Nom de l’expérience<input name="name" required placeholder="Ex. Segmentation ensemble — lot 01"></label><label>Modèle / méthode<input name="model" required placeholder="Nom du modèle"></label>
+<label>Version / commit<input name="version" placeholder="Tag, version ou commit"></label><label>Jeu de données<input name="dataset" required placeholder="Corpus et version"></label>
+<label class="v2-span">Paramètres<textarea name="parameters" placeholder="Seuils, méthode, paramètres d’entraînement…"></textarea></label><label class="v2-span">Notes et limites<textarea name="notes" placeholder="Objectif, erreurs observées, limites…"></textarea></label>
+<div class="v2-span"><button class="btn btn-primary" type="submit">Enregistrer l’expérience</button></div></form></article>
+<div class="v2-card" style="margin-top:14px"><h3>Historique</h3><div id="v2ExperimentsList"></div></div></section>
+<section id="validation" style="padding-top:36px"><div class="v2-head"><div><div class="v2-kicker">04 · EVALUATION</div><h2>Centre de validation scientifique</h2><p>Consigne les résultats calculés à partir d’un jeu de test indépendant. Cette fiche ne recalcule pas les métriques et ne certifie pas leur exactitude.</p></div></div>
+<div class="v2-notice warn">Documente la séparation entraînement / validation / test, la provenance des étiquettes, la méthode de calcul et les critères d’exclusion. Évite les fuites de données entre ensembles.</div>
+<article class="v2-card"><form id="v2ValidationForm" class="v2-form">
+<label>Modèle / version<input name="model" required placeholder="Identifiant du modèle"></label><label>Jeu de test indépendant<input name="dataset" required placeholder="Nom et version du jeu"></label>
+<label>Précision (%)<input name="precision" type="number" min="0" max="100" step="0.01" required></label><label>Rappel (%)<input name="recall" type="number" min="0" max="100" step="0.01" required></label>
+<label>F1-score (%)<input name="f1" type="number" min="0" max="100" step="0.01" required></label><label>Nombre d’échantillons<input name="samples" type="number" min="0" step="1" required></label>
+<label class="v2-span">Protocole et source<textarea name="protocol" required placeholder="Version du code, répartition, méthode, date et source du rapport…"></textarea></label><div class="v2-span"><button class="btn btn-primary" type="submit">Consigner les métriques</button></div></form></article>
+<div class="v2-card" style="margin-top:14px"><h3>Résultats enregistrés</h3><div id="v2ValidationsList"></div></div></section>
+<section id="reports" style="padding-top:36px"><div class="v2-head"><div><div class="v2-kicker">05 · EXPORTS & GOVERNANCE</div><h2>Rapports et sécurité</h2><p>Export des données de suivi ou impression de la page pour l’enregistrer en PDF.</p></div></div>
+<div class="v2-grid"><article class="v2-card"><h3>Export JSON</h3><p>Expériences et fiches de validation.</p><button id="v2ExportJson" class="btn btn-primary">Exporter JSON</button></article><article class="v2-card"><h3>Export CSV</h3><p>Pour tableur et analyses complémentaires.</p><button id="v2ExportCsv" class="btn btn-primary">Exporter CSV</button></article><article class="v2-card"><h3>Rapport PDF</h3><p>Ouvre la boîte d’impression du navigateur.</p><button id="v2PrintReport" class="btn btn-primary">Imprimer / PDF</button></article></div>
+<article class="v2-card" style="margin-top:14px"><h3>Contrôles de sécurité avant production</h3><div id="v2SecurityChecklist" class="v2-checklist"></div></article>
+<div class="v2-notice warn">La page statique ne fournit pas l’authentification multi-utilisateur. Avant d’exposer le backend : authentification serveur, rôles contrôlés côté API, isolation des espaces, HTTPS, CORS restrictif, limitation de débit, sauvegardes restaurables et journal d’audit.</div></section>
+<section id="connection" style="padding-top:36px"><div class="v2-head"><div><div class="v2-kicker">06 · CONNECTION</div><h2>Connexion à l’API Flask</h2><p>La configuration est partagée avec le champ API de l’espace documentaire.</p></div></div><article class="v2-card"><label>URL de l’API Flask<input id="apiBase" class="v2-field" placeholder="https://votre-api.example.com"></label><p class="v2-muted">La valeur est stockée dans le navigateur. Ne place jamais de clé secrète ou de mot de passe dans cette page publique.</p><button id="saveApiBase" class="btn btn-primary">Enregistrer l’URL</button><p id="apiSaved" class="v2-muted" aria-live="polite"></p></article></section>
+<footer><div><b>CHRONOS LAB</b><span> · SCIENTIFIC WORKSPACE V2</span></div><p>Conçu pour rendre l’incertitude visible, pas pour la masquer.</p></footer>
+</main><div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script src="./v2.js" defer></script>
+<script defer>
+document.addEventListener('DOMContentLoaded',()=>{const input=document.querySelector('#apiBase'),key='chronos-lab-api-base-v1';input.value=localStorage.getItem(key)||'';document.querySelector('#saveApiBase').addEventListener('click',()=>{localStorage.setItem(key,input.value.trim().replace(/\/$/,''));document.querySelector('#apiSaved').textContent='URL enregistrée dans ce navigateur.';});});
+</script>
+</body></html>
