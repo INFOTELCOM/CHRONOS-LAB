@@ -146,3 +146,61 @@ def test_login_and_admin_user_creation(tmp_path, monkeypatch):
     })
     assert created.status_code == 201
     assert created.get_json()['user']['role'] == 'researcher'
+
+
+def test_shared_research_artifact_crud_and_audit(tmp_path, monkeypatch):
+    client = setup_client(tmp_path, monkeypatch)
+    created = client.post('/api/v2/research-artifacts', json={
+        'type': 'note',
+        'payload': {'title': 'Seuil de segmentation', 'kind': 'Observation',
+                    'experiment': 'exp-01', 'body': 'Le seuil influence les contours.'}
+    })
+    assert created.status_code == 201
+    artifact = created.get_json()
+    assert artifact['payload']['title'] == 'Seuil de segmentation'
+    artifact_id = artifact['id']
+
+    listed = client.get('/api/v2/research-artifacts?type=note')
+    assert listed.status_code == 200
+    assert listed.get_json()[0]['id'] == artifact_id
+
+    updated = client.put(f'/api/v2/research-artifacts/{artifact_id}', json={
+        'payload': {'title': 'Seuil ajusté', 'kind': 'Décision',
+                    'experiment': 'exp-01', 'body': 'Le protocole doit être documenté.'}
+    })
+    assert updated.status_code == 200
+    assert updated.get_json()['payload']['title'] == 'Seuil ajusté'
+
+    audit = client.get('/api/v2/audit')
+    assert audit.status_code == 200
+    actions = [entry['action'] for entry in audit.get_json()]
+    assert 'RESEARCH_ARTIFACT_CREATED' in actions
+    assert 'RESEARCH_ARTIFACT_UPDATED' in actions
+
+    deleted = client.delete(f'/api/v2/research-artifacts/{artifact_id}')
+    assert deleted.status_code == 200
+    assert client.get('/api/v2/research-artifacts?type=note').get_json() == []
+
+
+def test_research_artifact_validation_and_evaluator_permissions(tmp_path, monkeypatch):
+    client = setup_client(tmp_path, monkeypatch)
+    invalid = client.post('/api/v2/research-artifacts', json={
+        'type': 'dataset',
+        'payload': {'name': 'Dataset', 'source': 'Test', 'hash': 'not-a-sha256'}
+    })
+    assert invalid.status_code == 400
+
+    c = chronos.connect()
+    c.execute("INSERT INTO users(email,display_name,password_hash,role,workspace_id) VALUES(?,?,?,?,1)",
+              ("evaluator-artifact@example.test", "Evaluator", chronos.generate_password_hash("VeryLong-Test-Password-2026!"), "evaluator"))
+    user = c.execute("SELECT * FROM users WHERE email=?", ("evaluator-artifact@example.test",)).fetchone()
+    token = "evaluator-artifact-token-" + ("z" * 48)
+    c.execute("INSERT INTO api_tokens(token_hash,user_id,expires_at) VALUES(?,?,?)",
+              (chronos._token_digest(token), user["id"], (datetime.now(timezone.utc)+timedelta(hours=1)).isoformat()))
+    c.commit(); c.close()
+    client.environ_base["HTTP_AUTHORIZATION"] = "Bearer " + token
+    assert client.get('/api/v2/research-artifacts').status_code == 200
+    denied = client.post('/api/v2/research-artifacts', json={
+        'type': 'task', 'payload': {'title': 'Tâche', 'priority': 'Normale'}
+    })
+    assert denied.status_code == 403
