@@ -27,7 +27,11 @@ jobs:
           test -s site/index.html
           test -s site/app.js
           test -s site/style.css
+          test -s site/v2.html
+          test -s site/v2.css
+          test -s site/v2.js
           node --check site/app.js
+          node --check site/v2.js
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload site artifact
