@@ -1,0 +1,2 @@
+image_path,class_label,script,artifact_id,source,source_url,license,publication,dating,annotator,reviewer,review_status,label_confidence,notes
+A001/photo_001.png,A001,egyptian_hieroglyphs,OBJ-001,Museum or corpus catalogue,https://example.org/item,CC-BY-4.0,Author Year page,New Kingdom,annotator_id,reviewer_id,expert-reviewed,high,Note on damage orientation and uncertainty

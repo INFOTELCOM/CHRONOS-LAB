@@ -1,0 +1,3 @@
+image_path,class_label,script,artifact_id,source,reviewer,review_status,source_url,license,publication,annotator,notes
+known/A001/photo_001.png,A001,maya_classical,INDEPENDENT-OBJ-001,Museum or corpus catalogue,reviewer_id,expert-reviewed,https://example.org/item,CC-BY-4.0,Author Year page,annotator_id,Independent held-out artefact
+unknown/unknown_001.png,UNKNOWN,maya_classical,INDEPENDENT-OBJ-002,Museum or corpus catalogue,reviewer_id,expert-reviewed,https://example.org/item2,CC-BY-4.0,Author Year page,annotator_id,No match to trained classes; evaluate rejection only

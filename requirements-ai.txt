@@ -1,0 +1,4 @@
+# Dépendances optionnelles pour entraîner et exécuter le classifieur de glyphes.
+# Choisissez la commande PyTorch adaptée à votre système sur https://pytorch.org/get-started/locally/
+torch>=2.2
+torchvision>=0.17

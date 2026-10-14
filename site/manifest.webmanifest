@@ -1,0 +1,15 @@
+{
+  "id": "./",
+  "name": "CHRONOS LAB — recherche épigraphique",
+  "short_name": "CHRONOS LAB",
+  "description": "Espace local de recherche, de comparaison d'hypothèses et de traçabilité documentaire.",
+  "lang": "fr-FR",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#071126",
+  "theme_color": "#08152d",
+  "icons": [
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
