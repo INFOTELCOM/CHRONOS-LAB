@@ -7,7 +7,7 @@ services:
       PORT: "8000"
       CHRONOS_HOST: "0.0.0.0"
       CHRONOS_DATA_DIR: "/var/data"
-      CHRONOS_ALLOWED_ORIGINS: "http://localhost:8000,http://127.0.0.1:8000"
+      CHRONOS_ALLOWED_ORIGINS: "http://localhost:8000,http://127.0.0.1:8000,https://infotelcom.github.io"
     volumes:
       - chronos-data:/var/data
     restart: unless-stopped
