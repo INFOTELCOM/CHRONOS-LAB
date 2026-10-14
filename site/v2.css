@@ -28,3 +28,8 @@
 .tab{text-decoration:none}.v2-checklist{display:grid;gap:10px}.v2-check{display:flex;gap:10px;align-items:flex-start;padding:12px;border:1px solid var(--line);border-radius:10px;color:#c7d7ee;font-size:11px;line-height:1.6}.v2-check b{display:block;color:#eff7ff;margin-bottom:2px}.v2-success{color:#8ce5bd}.v2-danger{color:#ffb2ba}
 
 .v2-form input[type=password]{letter-spacing:.3px}.v2-auth-state{padding:10px 12px;border:1px solid var(--line);border-radius:10px;margin-top:12px}.v2-auth-help{font-size:11px;color:var(--muted);line-height:1.65}.v2-card button[hidden],.v2-form[hidden]{display:none!important}
+
+/* Advanced research operations */
+.cl-list{display:grid;gap:8px;margin-top:14px}.cl-item{border:1px solid #263f63;background:#09172d;border-radius:10px;padding:11px 12px;min-width:0}.cl-item-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}.cl-item strong{font-size:12px;color:#e8f4ff}.cl-item p{white-space:pre-wrap;overflow-wrap:anywhere;margin:7px 0;color:#b5c8e3;font-size:11px;line-height:1.65}.cl-meta{font-size:10px;color:#7f9abb}.cl-item-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.cl-mini{font-size:10px;padding:5px 8px;border:1px solid #385578;background:#112747;color:#d7eaff;border-radius:7px;cursor:pointer}.cl-hash{font:10px/1.6 monospace;overflow-wrap:anywhere;color:#8ce5bd}.cl-status{font-size:10px;border:1px solid #36577d;border-radius:99px;padding:3px 7px;color:#9ddff3;white-space:nowrap}
+@media(max-width:850px){#researchops .v2-grid{grid-template-columns:1fr!important}}
+@media print{#researchops .cl-item{background:white!important;border-color:#aaa!important}#researchops .cl-item strong,#researchops .cl-item p,#researchops .cl-meta{color:#222!important}}

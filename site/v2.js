@@ -54,11 +54,11 @@ async function loadUsers(){
 async function login(email,password){
  const result=await apiFetch('/api/auth/login',{method:'POST',body:JSON.stringify({email,password})});
  sessionStorage.setItem(TK,result.token);sessionStorage.setItem(UK,JSON.stringify(result.user));user=result.user;
- await loadRecords();updateAuthUI();await loadUsers();notify('Connexion réussie. Les fiches sont chargées depuis le serveur.');
+ await loadRecords();updateAuthUI();await loadUsers();document.dispatchEvent(new Event('chronos-auth-changed'));notify('Connexion réussie. Les fiches sont chargées depuis le serveur.');
 }
 function showNoAuth(){notify('Connecte-toi pour enregistrer ou consulter les fiches partagées.')}
 $('#v2LoginForm')?.addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.currentTarget),status=$('#v2AuthStatus');status.textContent='Connexion…';try{await login(f.get('email'),f.get('password'));e.currentTarget.reset()}catch(err){status.textContent=err.message;notify(err.message)}});
-$('#v2Logout')?.addEventListener('click',async()=>{try{if(token())await apiFetch('/api/auth/logout',{method:'POST'})}catch{}sessionStorage.removeItem(TK);sessionStorage.removeItem(UK);user=null;ex=[];va=[];sync();updateAuthUI();notify('Déconnexion effectuée.')});
+$('#v2Logout')?.addEventListener('click',async()=>{try{if(token())await apiFetch('/api/auth/logout',{method:'POST'})}catch{}sessionStorage.removeItem(TK);sessionStorage.removeItem(UK);user=null;ex=[];va=[];sync();updateAuthUI();document.dispatchEvent(new Event('chronos-auth-changed'));notify('Déconnexion effectuée.')});
 $('#v2UserForm')?.addEventListener('submit',async e=>{e.preventDefault();if(!user||user.role!=='admin')return;const f=new FormData(e.currentTarget);try{const result=await apiFetch('/api/auth/users',{method:'POST',body:JSON.stringify({display_name:f.get('display_name'),email:f.get('email'),password:f.get('password'),role:f.get('role')})});e.currentTarget.reset();await loadUsers();notify('Compte créé : '+result.user.email)}catch(err){notify(err.message)}});
 $('#v2SyncLocal')?.addEventListener('click',async()=>{
  if(!user){showNoAuth();return}
@@ -84,5 +84,5 @@ $('#v2PrintReport')?.addEventListener('click',()=>window.print());
 const sec=$('#v2SecurityChecklist');if(sec)sec.textContent='Le backend exige un jeton valide pour les routes privées. Les rôles sont contrôlés côté serveur ; les actions importantes sont journalisées. Avant la production : HTTPS, sauvegardes restaurables, secret admin hors du dépôt, CORS limité à Pages, stockage persistant et rotation des secrets.';
 const savedUser=sessionStorage.getItem(UK);try{user=savedUser?JSON.parse(savedUser):null}catch{user=null}
 updateAuthUI();sync();
-if(token()){apiFetch('/api/auth/me').then(r=>{user=r.user;sessionStorage.setItem(UK,JSON.stringify(user));updateAuthUI();return loadRecords()}).then(loadUsers).catch(err=>{const s=$('#v2AuthStatus');if(s)s.textContent=err.message})}
+if(token()){apiFetch('/api/auth/me').then(r=>{user=r.user;sessionStorage.setItem(UK,JSON.stringify(user));updateAuthUI();return loadRecords()}).then(loadUsers).then(()=>document.dispatchEvent(new Event('chronos-auth-changed'))).catch(err=>{const s=$('#v2AuthStatus');if(s)s.textContent=err.message})}
 })();

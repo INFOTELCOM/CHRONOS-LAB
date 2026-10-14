@@ -51,7 +51,7 @@ L'application sera accessible sur `http://localhost:8000` et conservera ses donn
 
 ## D. Avant de rendre le backend public
 
-**Ne déploie pas directement l'API Flask actuelle sur une URL publique accessible en écriture.** L'API n'a pas encore d'authentification utilisateur, de rôles, de protection contre les abus ni de gestion multi-tenant. Avant un déploiement public du backend, ajouter au minimum authentification robuste, autorisation par dossier, protections CSRF si des cookies sont utilisés, limites de débit, sauvegardes restaurables, journalisation, suppression/export des données, politique de conservation et revue de sécurité. Le site Pages statique est utilisable sans exposer cette API.
+Le backend V2 inclut une authentification par jeton, des rôles et des journaux d'audit pour les routes privées. Avant un déploiement public, conserve HTTPS, limite CORS aux origines maîtrisées, configure le disque persistant, protège les secrets, surveille les abus et teste régulièrement la restauration des sauvegardes. La protection multi-organisations indépendante n'est pas encore implémentée : ne présente pas l'espace partagé CHRONOS LAB comme une isolation entre entreprises.
 
 ## E. Contrôles automatiques
 
@@ -87,6 +87,18 @@ Le premier administrateur est créé automatiquement au démarrage lorsque les d
 - **researcher** : crée des expériences et des évaluations ; peut supprimer uniquement ses propres expériences.
 - **evaluator** : consulte les expériences et peut consigner des évaluations, sans créer d'expérience.
 - Les jetons expirent après 8 heures et sont stockés dans `sessionStorage` du navigateur. Déconnexion = révocation du jeton côté serveur.
+
+
+### Studio de recherche avancé
+
+La V2 ajoute les routes privées suivantes pour le carnet de laboratoire, les hypothèses, les métadonnées de jeux de données et les tâches :
+
+- `GET /api/v2/research-artifacts?type=note|hypothesis|dataset|task` : liste les ressources partagées du workspace.
+- `POST /api/v2/research-artifacts` : crée une ressource avec `type` et `payload`.
+- `PUT /api/v2/research-artifacts/<id>` : modifie une ressource créée par l'utilisateur, ou par l'admin.
+- `DELETE /api/v2/research-artifacts/<id>` : supprime une ressource créée par l'utilisateur, ou par l'admin.
+
+Les actions de création, modification et suppression sont ajoutées au journal d'audit. Les évaluateurs peuvent lire les ressources, mais pas les créer/modifier/supprimer. Les métadonnées et empreintes SHA-256 des jeux de données peuvent être partagées ; le calcul de l'empreinte dans le navigateur ne téléverse pas le fichier lui-même. Sans session backend, l'interface garde un mode local. L'import local vers le serveur est une action explicite et conserve les originaux dans le navigateur.
 
 ### Limites à respecter
 
