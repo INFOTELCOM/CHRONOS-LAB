@@ -80,3 +80,26 @@
   body .topbar .top-actions .local-pill{flex:1 0 100%;margin:0 0 2px}
   body .topbar .top-actions .btn{flex:1 1 auto;text-align:center;padding:10px 8px}
 }
+
+/* Research workbench: searchable registries and thumb-friendly mobile navigation */
+.cl-search-label{display:block;margin-top:14px;color:#9fb6d6;font-size:10px;font-weight:750;letter-spacing:.3px}
+.cl-search{display:block;margin-top:6px!important;width:100%;min-width:0;background:#07152b!important;border-color:#294568!important}
+.cl-search::placeholder{color:#6f86a8}
+.mobile-workbench-dock{display:none}
+@media(max-width:700px){
+  body{padding-bottom:calc(78px + env(safe-area-inset-bottom,0px))}
+  .mobile-workbench-dock{
+    display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:2px;
+    position:fixed;left:10px;right:10px;bottom:calc(8px + env(safe-area-inset-bottom,0px));
+    z-index:20;padding:8px 5px 7px;border:1px solid #36577d;
+    border-radius:16px;background:rgba(7,17,38,.94);
+    box-shadow:0 12px 36px #0008,0 0 28px #3478f61c;
+    backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)
+  }
+  .mobile-workbench-dock a{display:flex;min-width:0;flex-direction:column;align-items:center;justify-content:center;gap:4px;text-decoration:none;color:#a9c3e7;border-radius:10px;padding:5px 1px}
+  .mobile-workbench-dock a:active,.mobile-workbench-dock a:focus-visible{background:#18396a;color:#fff;outline:1px solid #59d7e8}
+  .mobile-workbench-dock a span{font-size:18px;line-height:1.1;color:#72dff0}
+  .mobile-workbench-dock a small{font-size:8px;line-height:1.2;text-align:center;white-space:nowrap}
+  .cl-search{font-size:16px!important;padding:12px!important}
+}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.mobile-workbench-dock *{transition:none!important}}
