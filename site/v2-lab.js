@@ -50,15 +50,16 @@
   if(buttons.length){const actions=node('div','cl-item-actions');buttons.forEach(b=>actions.append(b));card.append(actions)}host.append(card);
  }
  function empty(host,message){if(!host.children.length)host.append(node('div','v2-empty',message))}
+ function filterRows(rows, selector, fields){const q=($(selector)?.value||'').trim().toLocaleLowerCase('fr');return q?rows.filter(row=>fields.some(field=>String(row[field]??'').toLocaleLowerCase('fr').includes(q))):rows;}
  async function render(){
   const n=$('#clNotebookList'),h=$('#clHypothesisList'),d=$('#clDatasetList'),t=$('#clTaskList');
   [n,h,d,t].forEach(x=>x?.replaceChildren());
   try{
    const [notes,hyps,datasets,tasks]=await Promise.all([listItems('note'),listItems('hypothesis'),listItems('dataset'),listItems('task')]);
-   notes.slice().reverse().forEach(x=>item(n,x.title,x.kind+' · '+new Date(x.at).toLocaleString('fr-FR')+(x.experiment?' · '+x.experiment:''),x.body,[action('Supprimer',()=>removeAndRender('note',x.id))]));
-   hyps.slice().reverse().forEach(x=>item(h,x.claim,x.status+' · '+new Date(x.at).toLocaleString('fr-FR'),'Critère : '+x.criterion+(x.evidence?'\n'+x.evidence:''),[action('Supprimer',()=>removeAndRender('hypothesis',x.id))]));
-   datasets.slice().reverse().forEach(x=>item(d,x.name,'Source : '+x.source+' · Licence : '+(x.license||'non précisée'),'Fichier : '+x.filename,[action('Copier le hash',async()=>{try{await navigator.clipboard.writeText(x.hash);status('Empreinte copiée.')}catch{status('Presse-papiers indisponible.')} }),action('Supprimer',()=>removeAndRender('dataset',x.id))],x.hash));
-   tasks.slice().reverse().forEach(x=>item(t,x.title,(x.done?'Terminée':'À faire')+' · priorité '+x.priority+' · '+(x.owner||'sans responsable'),'',[action(x.done?'Rouvrir':'Terminer',()=>toggleTask(x)),action('Supprimer',()=>removeAndRender('task',x.id))]));
+   filterRows(notes,'#clNotebookSearch',['title','kind','experiment','body']).slice().reverse().forEach(x=>item(n,x.title,x.kind+' · '+new Date(x.at).toLocaleString('fr-FR')+(x.experiment?' · '+x.experiment:''),x.body,[action('Supprimer',()=>removeAndRender('note',x.id))]));
+   filterRows(hyps,'#clHypothesisSearch',['claim','status','criterion','evidence']).slice().reverse().forEach(x=>item(h,x.claim,x.status+' · '+new Date(x.at).toLocaleString('fr-FR'),'Critère : '+x.criterion+(x.evidence?'\n'+x.evidence:''),[action('Supprimer',()=>removeAndRender('hypothesis',x.id))]));
+   filterRows(datasets,'#clDatasetSearch',['name','source','license','filename','hash']).slice().reverse().forEach(x=>item(d,x.name,'Source : '+x.source+' · Licence : '+(x.license||'non précisée'),'Fichier : '+x.filename,[action('Copier le hash',async()=>{try{await navigator.clipboard.writeText(x.hash);status('Empreinte copiée.')}catch{status('Presse-papiers indisponible.')} }),action('Supprimer',()=>removeAndRender('dataset',x.id))],x.hash));
+   filterRows(tasks,'#clTaskSearch',['title','owner','priority', 'done']).slice().reverse().forEach(x=>item(t,x.title,(x.done?'Terminée':'À faire')+' · priorité '+x.priority+' · '+(x.owner||'sans responsable'),'',[action(x.done?'Rouvrir':'Terminer',()=>toggleTask(x)),action('Supprimer',()=>removeAndRender('task',x.id))]));
    empty(n,'Aucune note pour le moment.');empty(h,'Aucune hypothèse enregistrée.');empty(d,'Aucun jeu de données enregistré.');empty(t,'Aucune tâche en attente.');
    status(remote?'Synchronisé avec le serveur CHRONOS LAB · espace partagé.':'Mode local : ces données restent dans ce navigateur. Connecte-toi et configure l’API pour les partager.');
   }catch(err){remote=false;status('Synchronisation impossible : '+err.message+'. Les données locales restent conservées.');}
@@ -117,6 +118,7 @@
   const badge=$('#clStorageMode');if(badge)badge.textContent=remote?'SERVEUR · PARTAGÉ':'LOCAL · NAVIGATEUR';
   await render();
  }
+ ['#clNotebookSearch','#clHypothesisSearch','#clDatasetSearch','#clTaskSearch'].forEach(selector=>$(selector)?.addEventListener('input',()=>{clearTimeout(window.__chronosSearchTimer);window.__chronosSearchTimer=setTimeout(()=>render(),220)}));
  document.addEventListener('chronos-auth-changed',authChanged);
  document.addEventListener('DOMContentLoaded',authChanged);
  authChanged();
